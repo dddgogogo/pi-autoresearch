@@ -1388,7 +1388,11 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
           const commitMsg = `${params.description}\n\nResult: ${trailerJson}`;
 
           const execOpts = { cwd: workDir, timeout: 10000 };
-          await pi.exec("git", ["add", "-A"], execOpts);
+          const addResult = await pi.exec("git", ["add", "-A"], execOpts);
+          if (addResult.code !== 0) {
+            const addErr = (addResult.stdout + addResult.stderr).trim();
+            throw new Error(`git add failed (exit ${addResult.code}): ${addErr.slice(0, 200)}`);
+          }
 
           const diffResult = await pi.exec("git", ["diff", "--cached", "--quiet"], execOpts);
           if (diffResult.code === 0) {

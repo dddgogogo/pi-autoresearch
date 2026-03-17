@@ -1387,29 +1387,35 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
           const trailerJson = JSON.stringify(resultData);
           const commitMsg = `${params.description}\n\nResult: ${trailerJson}`;
 
-          const gitResult = await pi.exec("bash", ["-c",
-            `git add -A && git diff --cached --quiet && echo "NOTHING_TO_COMMIT" || git commit -m ${JSON.stringify(commitMsg)}`
-          ], { cwd: workDir, timeout: 10000 });
+          const execOpts = { cwd: workDir, timeout: 10000 };
+          const addResult = await pi.exec("git", ["add", "-A"], execOpts);
+          if (addResult.code !== 0) {
+            const addErr = (addResult.stdout + addResult.stderr).trim();
+            throw new Error(`git add failed (exit ${addResult.code}): ${addErr.slice(0, 200)}`);
+          }
 
-          const gitOutput = (gitResult.stdout + gitResult.stderr).trim();
-          if (gitOutput.includes("NOTHING_TO_COMMIT")) {
+          const diffResult = await pi.exec("git", ["diff", "--cached", "--quiet"], execOpts);
+          if (diffResult.code === 0) {
             text += `\n📝 Git: nothing to commit (working tree clean)`;
-          } else if (gitResult.code === 0) {
-            const firstLine = gitOutput.split("\n")[0] || "";
-            text += `\n📝 Git: committed — ${firstLine}`;
-
-            // Update experiment record with the actual new commit hash
-            try {
-              const shaResult = await pi.exec("git", ["rev-parse", "--short=7", "HEAD"], { cwd: workDir, timeout: 5000 });
-              const newSha = (shaResult.stdout || "").trim();
-              if (newSha && newSha.length >= 7) {
-                experiment.commit = newSha;
-              }
-            } catch {
-              // Keep the original commit hash if rev-parse fails
-            }
           } else {
-            text += `\n⚠️ Git commit failed (exit ${gitResult.code}): ${gitOutput.slice(0, 200)}`;
+            const gitResult = await pi.exec("git", ["commit", "-m", commitMsg], execOpts);
+            const gitOutput = (gitResult.stdout + gitResult.stderr).trim();
+            if (gitResult.code === 0) {
+              const firstLine = gitOutput.split("\n")[0] || "";
+              text += `\n📝 Git: committed — ${firstLine}`;
+
+              try {
+                const shaResult = await pi.exec("git", ["rev-parse", "--short=7", "HEAD"], { cwd: workDir, timeout: 5000 });
+                const newSha = (shaResult.stdout || "").trim();
+                if (newSha && newSha.length >= 7) {
+                  experiment.commit = newSha;
+                }
+              } catch {
+                // Keep the original commit hash if rev-parse fails
+              }
+            } else {
+              text += `\n⚠️ Git commit failed (exit ${gitResult.code}): ${gitOutput.slice(0, 200)}`;
+            }
           }
         } catch (e) {
           text += `\n⚠️ Git commit error: ${e instanceof Error ? e.message : String(e)}`;

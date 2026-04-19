@@ -430,6 +430,7 @@ function currentResults(results: ExperimentResult[], segment: number): Experimen
 
 interface AutoresearchConfig {
   maxIterations?: number;
+  maxAutoResumeTurns?: number;
   workingDir?: string;
 }
 
@@ -450,6 +451,16 @@ function readMaxExperiments(cwd: string): number | null {
   return (typeof config.maxIterations === "number" && config.maxIterations > 0)
     ? Math.floor(config.maxIterations)
     : null;
+}
+
+const DEFAULT_MAX_AUTORESUME_TURNS = 50;
+
+/** Read maxAutoResumeTurns from autoresearch.config.json, falling back to the default. */
+function readMaxAutoResumeTurns(cwd: string): number {
+  const config = readConfig(cwd);
+  return (typeof config.maxAutoResumeTurns === "number" && config.maxAutoResumeTurns >= 0)
+    ? Math.floor(config.maxAutoResumeTurns)
+    : DEFAULT_MAX_AUTORESUME_TURNS;
 }
 
 /**
@@ -955,7 +966,6 @@ function renderDashboardLines(
 // ---------------------------------------------------------------------------
 
 export default function autoresearchExtension(pi: ExtensionAPI) {
-  const MAX_AUTORESUME_TURNS = 20;
   const BENCHMARK_GUARDRAIL =
     "Be careful not to overfit to the benchmarks and do not cheat on the benchmarks.";
 
@@ -1324,9 +1334,10 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     if (now - runtime.lastAutoResumeTime < 5 * 60 * 1000) return;
     runtime.lastAutoResumeTime = now;
 
-    if (runtime.autoResumeTurns >= MAX_AUTORESUME_TURNS) {
+    const maxAutoResumeTurns = readMaxAutoResumeTurns(ctx.cwd);
+    if (runtime.autoResumeTurns >= maxAutoResumeTurns) {
       ctx.ui.notify(
-        `Autoresearch auto-resume limit reached (${MAX_AUTORESUME_TURNS} turns)`,
+        `Autoresearch auto-resume limit reached (${maxAutoResumeTurns} turns)`,
         "info"
       );
       return;
